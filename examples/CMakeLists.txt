@@ -1,0 +1,1 @@
+add_subdirectory(create_and_load_plugin)
