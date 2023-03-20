@@ -40,6 +40,8 @@
 #include <dlfcn.h>
 #endif
 
+#include <iostream>
+
 namespace dpf {
 
 /**
@@ -50,14 +52,40 @@ class Plugin {
  public:
   Plugin(std::string server_name, std::string name, int version);
   virtual ~Plugin() {}
+  /**
+   * @brief Returns the name of the plugin
+   */
   std::string Name();
+  /**
+   * @brief Returns the name of the server where the plugin is part of
+   */
   std::string ServerName();
+  /**
+   * @brief Returns the version of the plugin
+   */
   int Version();
 
  private:
   std::string _name;
   std::string _server_name;
   int _version;
+};
+
+class IPlugin {
+ public:
+  IPlugin() {}
+  virtual ~IPlugin() {}
+  virtual std::string name() = 0;
+
+  static const int version = 1;
+  const std::string ServerName() { return "Default"; }
+};
+
+class PluginCreator : public Plugin {
+ public:
+  PluginCreator(std::string name, std::string server_name, int version)
+      : Plugin(server_name, name, version) {}
+  virtual IPlugin* create() = 0;
 };
 
 class Core;
@@ -70,8 +98,19 @@ typedef void fnRegisterLibrary(Core*);
 class LibraryLoader {
  public:
   ~LibraryLoader(void);
+  /**
+   * @brief Loads a dynamically linked library that conforms to the api (.so or
+   * .dll)
+   */
   bool Load(const std::string file_name);
+  /**
+   * @brief Registers the functions that takes in a dpf::Core
+   */
   fnRegisterLibrary* RegisterFunction(void);
+
+  /**
+   * @brief Frees a loaded library
+   */
   void Free();
 
  private:
@@ -90,7 +129,6 @@ class Library {
  public:
   Library(void);
   ~Library(void);
-
   bool Load(const std::string& filename);
   void RegisterLibrary(Core* core);
 
@@ -123,11 +161,26 @@ class Core {
   bool AddPlugin(Plugin* plugin);
 
   template <class PluginType>
-  auto GetPlugin(const std::string& server_name,
-                        const std::string& name) -> PluginType;
+  PluginType* GetPlugin(const std::string& server_name,
+                        const std::string& name);
 
-  template <class PluginType>
-  std::vector<PluginType*> GetAllPlugins(const std::string& server_name);
+  template <typename PluginType>
+  std::vector<PluginType*> GetAllPlugins(const std::string& server_name) {
+    std::vector<PluginType*> plugins;
+
+    auto server = _GetServer(server_name);
+    if (!server) {
+      return plugins;
+    }
+
+    for (std::map<std::string, Plugin*>::iterator iter =
+             server->Plugins().begin();
+         iter != server->Plugins().end(); ++iter) {
+      plugins.push_back(static_cast<PluginType*>(iter->second));
+    }
+
+    return plugins;
+  }
 
   bool LoadLibrary(const std::string& file_name);
   void ClearPlugins(void);
